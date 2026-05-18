@@ -4259,7 +4259,11 @@ const saveProfile = (e) => {
                 const orderedIds = participants.orderedIds || [];
                 const globalKey = getArenaGlobalKey(arenaName);
                 const normalizedGlobal = normalizeArenaGlobalState(arenaName, arenaGlobalState?.[globalKey] || {});
-                const globalMatchups = normalizedGlobal?.matchups || {};
+                const fallbackGlobal = getGlobalArenaDerivedState(arenaName, arenaBattleState);
+                const effectiveGlobalState = normalizedGlobal?.directMatchups && Object.keys(normalizedGlobal.directMatchups).length
+                    ? normalizedGlobal
+                    : fallbackGlobal;
+                const globalMatchups = effectiveGlobalState?.matchups || {};
                 const initialPair = findNextPendingPairByGroups(groupedIds, {}, globalMatchups);
                 if (!initialPair) return;
                 const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
@@ -4269,10 +4273,10 @@ const saveProfile = (e) => {
                     groupKey: String(groupKey || '').trim().toLowerCase() || 'all',
                     groupedIds,
                     orderedIds,
-                    stats: normalizedGlobal?.stats || {},
-                    directMatchups: normalizedGlobal?.directMatchups || {},
+                    stats: effectiveGlobalState?.stats || {},
+                    directMatchups: effectiveGlobalState?.directMatchups || {},
                     matchups: globalMatchups,
-                    victoryGraph: normalizedGlobal?.victoryGraph || {},
+                    victoryGraph: effectiveGlobalState?.victoryGraph || {},
                     championId: initialPair[0],
                     challengerId: initialPair[1],
                     activeGroupKey: activeGroup?.key || null,
@@ -4286,7 +4290,7 @@ const saveProfile = (e) => {
                     ...prev,
                     [arenaKey]: nextArenaState
                 }));
-                if (!arenaGlobalState?.[globalKey]) {
+                if (!arenaGlobalState?.[globalKey] && normalizedGlobal) {
                     setArenaGlobalState((prev) => ({
                         ...prev,
                         [globalKey]: normalizedGlobal
