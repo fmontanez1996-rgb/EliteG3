@@ -1365,6 +1365,9 @@
                 <button class="btn-critical-plate" onclick="document.getElementById('miModal').style.display='block'">
                     AGREGAR ARCHIVO
                 </button>
+                <button class="btn-critical-plate" type="button" onclick="registerCurrentGalleryInFirebase()">
+                    REGISTRAR EN FIREBASE
+                </button>
 
                 <div id="miModal" class="modal-url">
                     <h2 style="margin:0; font-size: 14px; color: #94a3b8;">PEGAR URL DEL ARCHIVO</h2>
@@ -1602,6 +1605,38 @@
                         const mime = String(file.type || '').toLowerCase();
                         const ext = String(file.name || '').split('.').pop()?.toLowerCase() || '';
                         return VALID_FILE_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || VALID_FILE_EXTENSIONS.includes(ext);
+                    }
+
+                    function registerCurrentGalleryInFirebase() {
+                        const cards = Array.from(document.querySelectorAll('.gallery-card'));
+                        if (!cards.length) {
+                            window.alert('No hay archivos en la galería para registrar.');
+                            return;
+                        }
+                        const payload = cards.reduce((acc, card) => {
+                            const mediaType = card.dataset.mediaType === 'video' ? 'video' : 'image';
+                            const normalized = normalizeGalleryItem({
+                                url: card.dataset.url || '',
+                                label: card.dataset.compatibleSlots || '',
+                                autor: ''
+                            }, mediaType === 'video' ? 'video' : 'image');
+                            if (!normalized?.url) return acc;
+                            const targetTag = mediaType === 'video' ? 'videos' : 'fotos';
+                            if (!Array.isArray(acc[targetTag])) acc[targetTag] = [];
+                            acc[targetTag].push(normalized);
+                            return acc;
+                        }, { fotos: [], videos: [] });
+
+                        if (!payload.fotos.length && !payload.videos.length) {
+                            window.alert('No se detectaron archivos válidos para registrar.');
+                            return;
+                        }
+
+                        window.opener.postMessage({
+                            type: 'REGISTER_GALLERY_IN_FIREBASE',
+                            id: '${editingId}',
+                            payload
+                        }, '*');
                     }
 
                     function openSlotActionModal(slotId, mode = '') {
@@ -2796,6 +2831,29 @@ const getInitialCatFormData = () => ({
                             batallaFotosPreferidas: {
                                 ...sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas),
                                 [slotId]: ''
+                            }
+                        }));
+                    }
+
+                    if (event.data.type === 'REGISTER_GALLERY_IN_FIREBASE') {
+                        const { id, payload } = event.data;
+                        if (!id || id === ANON_PROFILE_ID) return;
+                        const nextFotos = Array.isArray(payload?.fotos)
+                            ? payload.fotos.map((item) => normalizeGalleryItem(item, 'image')).filter((item) => item.url)
+                            : [];
+                        const nextVideos = Array.isArray(payload?.videos)
+                            ? payload.videos.map((item) => normalizeGalleryItem(item, 'video')).filter((item) => item.url)
+                            : [];
+                        await db.ref(`perfiles/${id}/galeria`).update({
+                            fotos: nextFotos,
+                            videos: nextVideos
+                        });
+                        setFormData(prev => ({
+                            ...prev,
+                            galeria: {
+                                ...(prev.galeria || {}),
+                                fotos: nextFotos,
+                                videos: nextVideos
                             }
                         }));
                     }
